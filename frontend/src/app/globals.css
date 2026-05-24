@@ -1,0 +1,523 @@
+/*
+ * globals.css — Visual Foundation
+ * ================================
+ * The CSS layer that turns theme.ts constants into living pixels.
+ *
+ * Every value here maps 1:1 to theme.ts. If you change a color in the
+ * theme file, change it here too. The two files are mirrors — the TS
+ * file for JavaScript consumers (Framer Motion, inline styles), this
+ * file for CSS consumers (Tailwind, raw CSS, pseudo-elements).
+ *
+ * ARCHITECTURE
+ * ------------
+ *   :root              → CSS custom properties (the single source for CSS)
+ *   @layer base        → body, html, typography resets
+ *   @layer components  → reusable utility classes (glass, surfaces)
+ *   @layer utilities   → one-off helpers (scrollbar, selection)
+ *
+ * Tailwind v4 reads the @theme block to generate utility classes.
+ * No tailwind.config.ts needed — this file IS the config.
+ */
+
+
+/* ─── TAILWIND V4 THEME CONFIG ──────────────────────────────────────── */
+
+@import "tailwindcss";
+
+@theme {
+  /* Surface colors */
+  --color-background:  #09090B;
+  --color-surface:     #111114;
+  --color-elevated:    #18181B;
+  --color-overlay:     #1E1E23;
+
+  /* Text colors */
+  --color-text-primary:   #FAFAFA;
+  --color-text-secondary: #A1A1AA;
+  --color-text-tertiary:  #71717A;
+  --color-text-disabled:  #3F3F46;
+
+  /* Accent */
+  --color-accent:        #8B5CF6;
+  --color-accent-light:  #A78BFA;
+  --color-accent-lighter:#C4B5FD;
+  --color-accent-dark:   #6D28D9;
+  --color-accent-ghost:  rgba(139, 92, 246, 0.08);
+  --color-accent-muted:  rgba(139, 92, 246, 0.15);
+
+  /* Semantic */
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-error:   #F87171;
+  --color-info:    #60A5FA;
+
+  /* Borders */
+  --color-border:        rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  20px;
+  --radius-3xl:  24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25), 0 1px 4px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.2);
+
+  /* Font families */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  /* Animation */
+  --duration-instant: 100ms;
+  --duration-fast:    150ms;
+  --duration-normal:  250ms;
+  --duration-slow:    350ms;
+  --ease-default:     cubic-bezier(0.25, 0.1, 0.25, 1.0);
+  --ease-out:         cubic-bezier(0.0, 0.0, 0.2, 1.0);
+  --ease-in:          cubic-bezier(0.4, 0.0, 1.0, 1.0);
+  --ease-in-out:      cubic-bezier(0.4, 0.0, 0.2, 1.0);
+}
+
+
+/* ─── CSS CUSTOM PROPERTIES ──────────────────────────────────────────── */
+/* Extended tokens that don't map to Tailwind utilities but are needed
+   for glassmorphism, gradients, and custom components. */
+
+:root {
+  /* Glassmorphism */
+  --glass-sm-bg:     rgba(255, 255, 255, 0.03);
+  --glass-sm-border: rgba(255, 255, 255, 0.06);
+  --glass-sm-blur:   8px;
+  --glass-sm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  --glass-md-bg:     rgba(255, 255, 255, 0.05);
+  --glass-md-border: rgba(255, 255, 255, 0.08);
+  --glass-md-blur:   16px;
+  --glass-md-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+
+  --glass-lg-bg:     rgba(255, 255, 255, 0.07);
+  --glass-lg-border: rgba(255, 255, 255, 0.10);
+  --glass-lg-blur:   24px;
+  --glass-lg-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
+  --glass-xl-bg:     rgba(255, 255, 255, 0.10);
+  --glass-xl-border: rgba(255, 255, 255, 0.12);
+  --glass-xl-blur:   40px;
+  --glass-xl-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+
+  /* Gradients */
+  --gradient-brand:        linear-gradient(135deg, #8B5CF6 0%, #6D28D9 50%, #4C1D95 100%);
+  --gradient-intelligence: linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%);
+  --gradient-surface:      linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+  --gradient-fade-down:    linear-gradient(180deg, transparent 0%, #09090B 100%);
+  --gradient-fade-up:      linear-gradient(0deg, transparent 0%, #09090B 100%);
+  --gradient-accent-glow:  linear-gradient(135deg, rgba(139,92,246,0.3), rgba(139,92,246,0));
+
+  /* Accent shadow (for active/focused elements) */
+  --shadow-accent-sm: 0 2px 8px rgba(139, 92, 246, 0.15);
+  --shadow-accent-md: 0 4px 16px rgba(139, 92, 246, 0.2);
+  --shadow-accent-lg: 0 8px 32px rgba(139, 92, 246, 0.25);
+
+  /* Z-index scale */
+  --z-base:     0;
+  --z-dropdown: 10;
+  --z-sticky:   20;
+  --z-overlay:  30;
+  --z-modal:    40;
+  --z-popover:  50;
+  --z-toast:    60;
+  --z-tooltip:  70;
+}
+
+
+/* ─── BASE LAYER ─────────────────────────────────────────────────────── */
+
+@layer base {
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    line-height: 1.6;
+    letter-spacing: 0px;
+    min-height: 100dvh;
+    overflow-x: hidden;
+
+    /* Subtle radial glow at the top — registers as ambient light,
+       not decoration. Barely visible, but removes the "flat void" feel. */
+    background-image:
+      var(--gradient-surface),
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(139, 92, 246, 0.04), transparent);
+    background-attachment: fixed;
+  }
+
+  /* ── Headings ──────────────────────────────────────────────────────── */
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  h1 { font-size: 3rem;     letter-spacing: -0.025em; }
+  h2 { font-size: 2.25rem;  letter-spacing: -0.02em;  }
+  h3 { font-size: 1.875rem; letter-spacing: -0.015em; }
+  h4 { font-size: 1.5rem;   letter-spacing: -0.01em;  }
+  h5 { font-size: 1.25rem; }
+  h6 { font-size: 1rem;     font-weight: 500; }
+
+  /* ── Paragraph ─────────────────────────────────────────────────────── */
+
+  p {
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+  }
+
+  /* ── Links ─────────────────────────────────────────────────────────── */
+
+  a {
+    color: var(--color-accent-light);
+    text-decoration: none;
+    transition: color var(--duration-fast) var(--ease-out);
+  }
+
+  a:hover {
+    color: var(--color-accent-lighter);
+  }
+
+  /* ── Code ──────────────────────────────────────────────────────────── */
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.125em 0.375em;
+    color: var(--color-accent-light);
+  }
+
+  pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--color-text-primary);
+  }
+
+  /* ── Selection ─────────────────────────────────────────────────────── */
+  /* Accent-tinted selection. Feels intentional, not generic blue. */
+
+  ::selection {
+    background: rgba(139, 92, 246, 0.25);
+    color: #FAFAFA;
+  }
+
+  ::-moz-selection {
+    background: rgba(139, 92, 246, 0.25);
+    color: #FAFAFA;
+  }
+
+  /* ── Focus ─────────────────────────────────────────────────────────── */
+  /* Accessible focus rings that match the accent system.
+     Visible for keyboard users, invisible for mouse users. */
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* ── Images ────────────────────────────────────────────────────────── */
+
+  img, video {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+}
+
+
+/* ─── COMPONENT LAYER ────────────────────────────────────────────────── */
+
+@layer components {
+
+  /* ── Glass presets ─────────────────────────────────────────────────── */
+  /* Apply via className="glass-sm", "glass-md", etc.
+     Each class includes bg + border + blur + shadow as a complete unit. */
+
+  .glass-sm {
+    background: var(--glass-sm-bg);
+    border: 1px solid var(--glass-sm-border);
+    backdrop-filter: blur(var(--glass-sm-blur));
+    -webkit-backdrop-filter: blur(var(--glass-sm-blur));
+    box-shadow: var(--glass-sm-shadow);
+  }
+
+  .glass-md {
+    background: var(--glass-md-bg);
+    border: 1px solid var(--glass-md-border);
+    backdrop-filter: blur(var(--glass-md-blur));
+    -webkit-backdrop-filter: blur(var(--glass-md-blur));
+    box-shadow: var(--glass-md-shadow);
+  }
+
+  .glass-lg {
+    background: var(--glass-lg-bg);
+    border: 1px solid var(--glass-lg-border);
+    backdrop-filter: blur(var(--glass-lg-blur));
+    -webkit-backdrop-filter: blur(var(--glass-lg-blur));
+    box-shadow: var(--glass-lg-shadow);
+  }
+
+  .glass-xl {
+    background: var(--glass-xl-bg);
+    border: 1px solid var(--glass-xl-border);
+    backdrop-filter: blur(var(--glass-xl-blur));
+    -webkit-backdrop-filter: blur(var(--glass-xl-blur));
+    box-shadow: var(--glass-xl-shadow);
+  }
+
+  /* ── Surface utility classes ───────────────────────────────────────── */
+  /* Quick application of the surface depth stack. */
+
+  .surface-base {
+    background-color: var(--color-background);
+  }
+
+  .surface-surface {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-subtle);
+  }
+
+  .surface-elevated {
+    background-color: var(--color-elevated);
+    border: 1px solid var(--color-border);
+  }
+
+  .surface-overlay {
+    background-color: var(--color-overlay);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* ── Text hierarchy classes ────────────────────────────────────────── */
+
+  .text-heading {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .text-body {
+    color: var(--color-text-secondary);
+    font-weight: 400;
+  }
+
+  .text-meta {
+    color: var(--color-text-tertiary);
+    font-size: 0.875rem;
+    letter-spacing: 0.005em;
+  }
+
+  .text-label {
+    color: var(--color-text-tertiary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+  }
+
+  .text-disabled {
+    color: var(--color-text-disabled);
+  }
+
+  /* ── Accent tint background ────────────────────────────────────────── */
+  /* For AI indicators, active nav items, selected states. */
+
+  .bg-accent-ghost {
+    background-color: var(--color-accent-ghost);
+  }
+
+  .bg-accent-ghost:hover {
+    background-color: var(--color-accent-muted);
+  }
+
+  /* ── Accent border ─────────────────────────────────────────────────── */
+
+  .border-accent-muted {
+    border-color: var(--color-accent-muted);
+  }
+
+  /* ── Premium card ──────────────────────────────────────────────────── */
+  /* The most common card variant — elevated surface with surface gradient
+     and subtle top-edge highlight. Use as a starting point for all cards. */
+
+  .card-premium {
+    background-color: var(--color-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-premium::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--gradient-surface);
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* ── Divider ───────────────────────────────────────────────────────── */
+
+  .divider {
+    border: none;
+    height: 1px;
+    background: var(--color-border-subtle);
+  }
+
+  .divider-strong {
+    border: none;
+    height: 1px;
+    background: var(--color-border);
+  }
+}
+
+
+/* ─── UTILITIES LAYER ────────────────────────────────────────────────── */
+
+@layer utilities {
+
+  /* ── Scrollbar ─────────────────────────────────────────────────────── */
+  /* Thin, dark, invisible until hovered. Matches the premium aesthetic:
+     the scrollbar should never draw attention to itself. */
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+  }
+
+  *:hover {
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+
+  /* Webkit scrollbar — Chrome, Safari, Edge */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* ── Smooth transition utility ─────────────────────────────────────── */
+  /* Apply to any element for consistent motion. */
+
+  .transition-premium {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: var(--ease-default);
+  }
+
+  .transition-fast {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-out);
+  }
+
+  .transition-slow {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--duration-slow);
+    transition-timing-function: var(--ease-in-out);
+  }
+
+  /* ── Fade masks ────────────────────────────────────────────────────── */
+  /* For scrollable lists with a soft edge. Apply to a wrapper div. */
+
+  .mask-fade-down {
+    mask-image: var(--gradient-fade-down);
+    -webkit-mask-image: var(--gradient-fade-down);
+  }
+
+  .mask-fade-up {
+    mask-image: var(--gradient-fade-up);
+    -webkit-mask-image: var(--gradient-fade-up);
+  }
+
+  /* ── Accent glow ───────────────────────────────────────────────────── */
+  /* For AI-active / processing states. Use VERY sparingly. */
+
+  .glow-accent-sm { box-shadow: var(--shadow-accent-sm); }
+  .glow-accent-md { box-shadow: var(--shadow-accent-md); }
+  .glow-accent-lg { box-shadow: var(--shadow-accent-lg); }
+
+  /* ── Text balance ──────────────────────────────────────────────────── */
+  /* Prevents ugly ragged text in headings. */
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+
+/* ─── SHIMMER ANIMATION ─────────────────────────────────────────────── */
+/* Luxury loading shimmer — light sweeps left-to-right like
+   light catching a polished surface. Used by SummarySkeleton. */
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
