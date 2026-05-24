@@ -6,6 +6,7 @@ python-dotenv
 pydantic
 pydantic-settings
 httpx
+requests
 openai
 scikit-learn
 numpy
