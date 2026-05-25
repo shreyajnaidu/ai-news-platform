@@ -26,7 +26,16 @@ const playfair = Playfair_Display({
 });
 
 // ─── Animation Presets ─────────────────────────────────────────────────
-
+async function wakeBackend() {
+  try {
+    await wakeBackend();
+    await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/health`
+    );
+  } catch (error) {
+    console.log("Backend waking up...");
+  }
+}
 const easeVal = [0.25, 0.1, 0.25, 1.0] as const;
 const easeOutVal = [0.0, 0.0, 0.2, 1.0] as const;
 const springVal = { type: "spring" as const, stiffness: 100, damping: 20 };

@@ -14,7 +14,7 @@ import axios, { type AxiosError, type AxiosInstance } from "axios";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-
+console.log(process.env.NEXT_PUBLIC_API_URL);
 // ─── Axios Instance ───────────────────────────────────────────────────
 
 const api: AxiosInstance = axios.create({
