@@ -12,9 +12,11 @@
  */
 
 import Image from "next/image";
+import Link from "next/link";
 import { Playfair_Display } from "next/font/google";
 import { motion, useScroll, useTransform, type Variants } from "framer-motion";
 import { FeedSection } from "@/components/feed/FeedSection";
+import { useAuth } from "@/hooks/useAuth";
 
 // ─── Vintage Serif Font ────────────────────────────────────────────────
 
@@ -26,16 +28,7 @@ const playfair = Playfair_Display({
 });
 
 // ─── Animation Presets ─────────────────────────────────────────────────
-async function wakeBackend() {
-  try {
-    await wakeBackend();
-    await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/health`
-    );
-  } catch (error) {
-    console.log("Backend waking up...");
-  }
-}
+
 const easeVal = [0.25, 0.1, 0.25, 1.0] as const;
 const easeOutVal = [0.0, 0.0, 0.2, 1.0] as const;
 const springVal = { type: "spring" as const, stiffness: 100, damping: 20 };
@@ -169,6 +162,8 @@ function AmbientBackground() {
 // ─── Navbar ───────────────────────────────────────────────────────────
 
 function Navbar() {
+  const { user, logout } = useAuth();
+
   return (
     <motion.nav
       className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between px-6 py-4 md:px-10"
@@ -188,7 +183,7 @@ function Navbar() {
       />
 
       {/* Logo + Company Name */}
-      <div className="relative z-10 flex items-center gap-2.5">
+      <Link href="/" className="relative z-10 flex items-center gap-2.5">
         <div
           className="flex h-8 w-8 items-center justify-center rounded-lg"
           style={{ backgroundColor: "#FAFAFA" }}
@@ -215,32 +210,60 @@ function Navbar() {
         >
           Cognos
         </span>
-      </div>
+      </Link>
 
-      {/* Right: Sign in + Get Access only */}
+      {/* Right: Auth-aware actions */}
       <div className="relative z-10 flex items-center gap-3">
-        <a
-          href="#"
-          className="text-sm text-zinc-400 transition-colors duration-300 hover:text-zinc-100"
-        >
-          Sign in
-        </a>
-        <motion.a
-          href="#"
-          className="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-300"
-          style={{
-            backgroundColor: "#FAFAFA",
-            color: "#09090B",
-          }}
-          whileHover={{
-            backgroundColor: "#E4E4E7",
-            boxShadow: "0 2px 12px rgba(255,255,255,0.1)",
-          }}
-          whileTap={{ scale: 0.97 }}
-          transition={springVal}
-        >
-          Get Access
-        </motion.a>
+        {user ? (
+          <>
+            <span className="hidden text-sm text-zinc-400 sm:inline">
+              {user.full_name || user.email}
+            </span>
+            <motion.button
+              onClick={logout}
+              className="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-300"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.06)",
+                color: "#D4D4D8",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+              whileHover={{
+                backgroundColor: "rgba(255,255,255,0.10)",
+                borderColor: "rgba(255,255,255,0.20)",
+              }}
+              whileTap={{ scale: 0.97 }}
+              transition={springVal}
+            >
+              Sign out
+            </motion.button>
+          </>
+        ) : (
+          <>
+            <Link
+              href="/login"
+              className="text-sm text-zinc-400 transition-colors duration-300 hover:text-zinc-100"
+            >
+              Sign in
+            </Link>
+            <Link href="/signup">
+              <motion.span
+                className="inline-block rounded-lg px-4 py-2 text-sm font-medium transition-all duration-300"
+                style={{
+                  backgroundColor: "#FAFAFA",
+                  color: "#09090B",
+                }}
+                whileHover={{
+                  backgroundColor: "#E4E4E7",
+                  boxShadow: "0 2px 12px rgba(255,255,255,0.1)",
+                }}
+                whileTap={{ scale: 0.97 }}
+                transition={springVal}
+              >
+                Get Access
+              </motion.span>
+            </Link>
+          </>
+        )}
       </div>
     </motion.nav>
   );
@@ -404,7 +427,6 @@ function Hero() {
               />
             ))}
           </div>
-          
         </motion.div>
       </motion.div>
 

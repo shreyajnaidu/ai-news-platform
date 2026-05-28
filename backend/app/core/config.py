@@ -50,6 +50,21 @@ class Settings(BaseSettings):
     # Get one at: https://openrouter.ai/keys
     openrouter_api_key: str
 
+    # ── JWT Authentication ──────────────────────────────────────────
+    # SECRET_KEY signs JWT tokens — must be a long random string.
+    # Generate one: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    # NEVER commit a real secret to git. Always use .env.
+    secret_key: str
+
+    # How long a login token remains valid (in minutes).
+    # 60 min = good balance of security and UX.
+    # Shorter (15-30 min) for high-security apps.
+    access_token_expire_minutes: int = 60
+
+    # JWT signing algorithm. HS256 (HMAC-SHA256) is the standard
+    # for symmetric-key tokens and is supported by every JWT library.
+    jwt_algorithm: str = "HS256"
+
     # ── App ───────────────────────────────────────────────────────────
     app_name: str = "AI News Ranker"
     debug: bool = False

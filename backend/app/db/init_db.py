@@ -1,6 +1,6 @@
 from app.db.database import engine
 from app.db.base import Base
-
+from app.models.user import User
 # Import models so SQLAlchemy registers them
 from app.models.article import Article
 
