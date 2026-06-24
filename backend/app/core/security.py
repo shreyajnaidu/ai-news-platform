@@ -42,7 +42,7 @@ IMPORT CONTRACT:
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Optional
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -125,6 +125,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/auth/login",
     auto_error=True,
+)
+
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl="/auth/login",
+    auto_error=False,
 )
 
 
@@ -279,5 +284,45 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated",
         )
+
+    return user
+
+
+async def get_optional_current_user(
+    db: Annotated[Session, Depends(get_db)],
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+) -> Optional[User]:
+    """
+    FastAPI dependency that optionally resolves the authenticated user.
+
+    Unlike get_current_user, this NEVER raises 401. If no token is
+    provided or the token is invalid, it returns None. Route handlers
+    can use this for endpoints that work for both anonymous and
+    authenticated users (e.g., the feed endpoint).
+
+    Args:
+        token: Optional JWT string (injected by oauth2_scheme_optional).
+        db:    SQLAlchemy session (injected by get_db).
+
+    Returns:
+        The authenticated User ORM object, or None.
+    """
+    if token is None:
+        return None
+
+    try:
+        token_data = decode_access_token(token)
+    except InvalidTokenError:
+        return None
+
+    if token_data.user_id is None:
+        return None
+
+    stmt = select(User).where(User.id == token_data.user_id)
+    result = db.execute(stmt)
+    user = result.scalars().first()
+
+    if user is None or not user.is_active:
+        return None
 
     return user

@@ -1,7 +1,12 @@
+from typing import Optional
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.security import get_optional_current_user
 from app.db.database import get_db
+from app.models.user import User
 from app.services.article_service import (
     get_ranked_articles,
     save_articles,
@@ -10,9 +15,7 @@ from app.services.news_service import (
     NewsAPIError,
     fetch_articles,
 )
-from app.services.recommendation_service import (
-    rank_articles_by_interest,
-)
+
 router = APIRouter()
 
 
@@ -52,12 +55,21 @@ def get_news(
 @router.get("/feed")
 def get_feed(
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     try:
-        ranked_articles = get_ranked_articles(db)
+        user_interests = None
+        if current_user and current_user.interests:
+            try:
+                parsed = json.loads(current_user.interests)
+                if isinstance(parsed, list):
+                    user_interests = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
 
-        ranked_articles = rank_articles_by_interest(
-           ranked_articles
+        ranked_articles = get_ranked_articles(
+            db,
+            user_interests=user_interests,
         )
 
         return {

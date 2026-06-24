@@ -132,6 +132,44 @@ export const api = {
     request<T>("DELETE", path, opts),
 };
 
+// ─── Wake / Health Ping ────────────────────────────────────────────────
+// Render free tier spins down the backend after inactivity.
+// This pings /health up to 10 times (30s total) to wake it up,
+// so the first feed fetch doesn't get a connection error.
+
+export class WakeTimeoutError extends Error {
+  constructor() {
+    super("Backend server did not wake up in time");
+    this.name = "WakeTimeoutError";
+  }
+}
+
+const WAKE_RETRIES = 10;
+const WAKE_INTERVAL_MS = 3000;
+
+export async function wakeBackend(): Promise<void> {
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+  for (let attempt = 1; attempt <= WAKE_RETRIES; attempt++) {
+    try {
+      const resp = await fetch(`${baseUrl}/health`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (resp.ok) return;
+    } catch {
+      // Server is still sleeping — will throw on cold Render instance
+    }
+
+    if (attempt < WAKE_RETRIES) {
+      console.log(`Waking backend... (attempt ${attempt}/${WAKE_RETRIES})`);
+      await new Promise((r) => setTimeout(r, WAKE_INTERVAL_MS));
+    }
+  }
+
+  throw new WakeTimeoutError();
+}
+
 // ─── Feed Types ──────────────────────────────────────────────────────
 
 export interface FeedArticle {
@@ -143,9 +181,9 @@ export interface FeedArticle {
   url: string;
   image_url: string | null;
   published_at: string | null;
-  score: number;
 
   ml_score?: number;
+  personalization_boost?: number;
   importance_boost?: number;
   freshness_boost?: number;
   quality_score?: number;

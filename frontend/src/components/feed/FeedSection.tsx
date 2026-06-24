@@ -18,7 +18,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { fetchFeed, ApiError, type FeedArticle } from "@/services/api";
+import { fetchFeed, ApiError, wakeBackend, WakeTimeoutError, type FeedArticle } from "@/services/api";
 import { useSummary } from "@/hooks/useSummary";
 import { NewsCard } from "./NewsCard";
 import { SummaryModal } from "@/components/summary/SummaryModal";
@@ -120,6 +120,7 @@ export function FeedSection() {
   const [data, setData] = useState<FeedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(true);
 
   const {
     selectedArticle,
@@ -131,9 +132,22 @@ export function FeedSection() {
     closeSummary,
   } = useSummary();
 
-  function loadFeed() {
+  async function loadFeed() {
     setLoading(true);
     setError(null);
+
+    try {
+      await wakeBackend();
+    } catch {
+      setConnecting(false);
+      setLoading(false);
+      setError(
+        "Server is starting up. Please wait a moment and refresh.",
+      );
+      return;
+    }
+
+    setConnecting(false);
 
     fetchFeed()
       .then((response) => {
@@ -179,7 +193,25 @@ export function FeedSection() {
       </motion.div>
 
       {/* ── Content ──────────────────────────────────────────────── */}
-      {error ? (
+      {connecting ? (
+        <section className="relative px-6 py-20 md:px-10 lg:py-28">
+          <div className="flex flex-col items-center py-24 text-center">
+            <div
+              className="mx-auto mb-6 h-10 w-10 animate-spin rounded-full"
+              style={{
+                border: "2px solid rgba(255,255,255,0.08)",
+                borderTopColor: "#A78BFA",
+              }}
+            />
+            <p className="text-sm font-medium text-zinc-300">
+              Connecting to server...
+            </p>
+            <p className="mt-2 text-xs text-zinc-500">
+              Waking up the AI engine — this may take 30 seconds
+            </p>
+          </div>
+        </section>
+      ) : error ? (
         <ErrorState message={error} onRetry={loadFeed} />
       ) : loading ? (
         <SkeletonGrid />

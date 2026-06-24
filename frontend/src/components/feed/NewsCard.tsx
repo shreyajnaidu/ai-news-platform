@@ -168,12 +168,12 @@ export function NewsCard({ article, onArticleClick }: NewsCardProps) {
               backgroundColor: "rgba(9,9,11,0.7)",
             }}
           >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: scoreColor(article.score) }}
-            />
+    <span
+      className="h-1.5 w-1.5 rounded-full"
+      style={{ backgroundColor: scoreColor((article.final_score ?? 0.5) * 100) }}
+    />
             <span className="text-[10px] font-medium text-zinc-400">
-              {Math.round(article.score)}
+              {Math.round((article.final_score ?? 0.5) * 100)}
             </span>
           </div>
         </div>

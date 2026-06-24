@@ -124,9 +124,10 @@ except Exception as exc:
 #   - Want editorial curation feel?   Raise W_IMPORTANCE
 #   - Want cleaner feed?              Raise W_QUALITY
 
-W_ML = 0.40
-W_IMPORTANCE = 0.25
-W_FRESHNESS = 0.20
+W_ML = 0.35
+W_PERSONAL = 0.15
+W_IMPORTANCE = 0.20
+W_FRESHNESS = 0.15
 W_QUALITY = 0.15
 
 # ─── Freshness Configuration ──────────────────────────────────────────────
@@ -312,6 +313,61 @@ def _compute_ml_scores(articles: list[dict[str, Any]]) -> list[float]:
         return [0.5] * len(articles)
 
 
+# ─── 1.5 Personalization Boost ────────────────────────────────────────────
+
+
+def _compute_personalization_boost(
+    articles: list[dict[str, Any]],
+    user_interests: list[str] | None,
+) -> list[float]:
+    """
+    Boost articles that match the user's stated interests.
+
+    HOW IT WORKS:
+        For each article, check if its category, title, or description
+        contains any of the user's interest topics (case-insensitive).
+
+        Each match adds a boost increment, capped at 1.0 total.
+
+    GRACEFUL DEGRADATION:
+        If user_interests is None or empty, every article gets 0.0
+        (neutral — no personalization applied).
+
+    Args:
+        articles:       List of article dicts.
+        user_interests: List of interest topic strings, or None.
+
+    Returns:
+        List of personalization_boost values in [0, 1].
+    """
+    if not user_interests:
+        return [0.0] * len(articles)
+
+    interest_keywords = [i.lower().strip() for i in user_interests if i]
+
+    if not interest_keywords:
+        return [0.0] * len(articles)
+
+    boosts: list[float] = []
+
+    for article in articles:
+        text_to_search = " ".join([
+            (article.get("category") or "").lower(),
+            (article.get("title") or "").lower(),
+            (article.get("description") or "").lower(),
+        ])
+
+        match_count = 0
+        for keyword in interest_keywords:
+            if keyword in text_to_search:
+                match_count += 1
+
+        boost = min(1.0, match_count * 0.25)
+        boosts.append(boost)
+
+    return boosts
+
+
 # ─── 2. Importance Boost ─────────────────────────────────────────────────
 
 
@@ -381,20 +437,21 @@ def _parse_published_at(raw: str | None) -> datetime | None:
     """
     if not raw:
         return None
+
     if isinstance(raw, datetime):
         if raw.tzinfo is None:
             return raw.replace(tzinfo=timezone.utc)
-    return raw
+        return raw
 
-    raw = str(raw).strip()
+    raw_str = str(raw).strip()
 
     # Try ISO 8601 with 'Z' suffix
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
+    if raw_str.endswith("Z"):
+        raw_str = raw_str[:-1] + "+00:00"
 
     # Try standard fromisoformat (Python 3.11+ handles most cases)
     try:
-        dt = datetime.fromisoformat(raw)
+        dt = datetime.fromisoformat(raw_str)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
@@ -404,7 +461,7 @@ def _parse_published_at(raw: str | None) -> datetime | None:
     # Fallback: try common news API format
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
         try:
-            dt = datetime.strptime(raw, fmt)
+            dt = datetime.strptime(raw_str, fmt)
             return dt.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
@@ -529,6 +586,7 @@ def _compute_quality_score(articles: list[dict[str, Any]]) -> list[float]:
 
 def _merge_scores(
     ml_scores: list[float],
+    personal_boosts: list[float],
     importance_boosts: list[float],
     freshness_boosts: list[float],
     quality_scores: list[float],
@@ -537,8 +595,9 @@ def _merge_scores(
     Blend all sub-scores into a single final_score using configured weights.
 
     FORMULA:
-        final = W_ML * ml + W_IMPORTANCE * importance
-              + W_FRESHNESS * freshness + W_QUALITY * quality
+        final = W_ML * ml + W_PERSONAL * personal
+              + W_IMPORTANCE * importance + W_FRESHNESS * freshness
+              + W_QUALITY * quality
 
     All weights sum to 1.0, so the result stays in [0, 1] as long as
     all inputs are in [0, 1] (which they are by construction).
@@ -552,6 +611,7 @@ def _merge_scores(
 
     Args:
         ml_scores:          Model-predicted interest scores.
+        personal_boosts:    Per-user interest personalization.
         importance_boosts:  Editorial importance signals.
         freshness_boosts:   Time-decay recency signals.
         quality_scores:     Content quality penalties applied.
@@ -561,11 +621,12 @@ def _merge_scores(
     """
     final_scores: list[float] = []
 
-    for ml, imp, fresh, qual in zip(
-        ml_scores, importance_boosts, freshness_boosts, quality_scores
+    for ml, pers, imp, fresh, qual in zip(
+        ml_scores, personal_boosts, importance_boosts, freshness_boosts, quality_scores
     ):
         score = (
             W_ML * ml
+            + W_PERSONAL * pers
             + W_IMPORTANCE * imp
             + W_FRESHNESS * fresh
             + W_QUALITY * qual
@@ -579,7 +640,10 @@ def _merge_scores(
 # ─── Public Entry Point ──────────────────────────────────────────────────
 
 
-def rank_articles(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def rank_articles(
+    articles: list[dict[str, Any]],
+    user_interests: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """
     Rank articles using the hybrid scoring system.
 
@@ -588,26 +652,31 @@ def rank_articles(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     (with score keys added) sorted by final_score descending.
 
     PIPELINE:
-        1. Compute ML scores            (trained model or neutral fallback)
-        2. Compute importance boosts     (category + keyword signals)
-        3. Compute freshness boosts      (exponential time-decay)
-        4. Compute quality scores        (penalize gossip / clickbait)
-        5. Merge all scores              (weighted sum)
-        6. Attach scores to article dicts
-        7. Sort by final_score descending
+        1. Compute ML scores                 (trained model or neutral fallback)
+        2. Compute personalization boosts    (per-user interest topic matching)
+        3. Compute importance boosts         (category + keyword signals)
+        4. Compute freshness boosts          (exponential time-decay)
+        5. Compute quality scores            (penalize gossip / clickbait)
+        6. Merge all scores                  (weighted sum)
+        7. Attach scores to article dicts
+        8. Sort by final_score descending
 
     SIDE EFFECTS:
         Adds these keys to each article dict IN-PLACE:
-            - ml_score:           float
-            - importance_boost:   float
-            - freshness_boost:    float
-            - quality_score:      float
-            - final_score:        float
+            - ml_score:             float
+            - personalization_boost: float
+            - importance_boost:     float
+            - freshness_boost:      float
+            - quality_score:        float
+            - final_score:          float
 
     Args:
-        articles: List of article dicts. Each should have (at minimum):
-            title, description (opt), category (opt),
-            source (opt), published_at (opt).
+        articles:       List of article dicts. Each should have (at minimum):
+                        title, description (opt), category (opt),
+                        source (opt), published_at (opt).
+        user_interests: Optional list of interest topic strings.
+                        When provided, articles matching these topics
+                        receive a personalization boost.
 
     Returns:
         The same list[dict], with score keys added, sorted by final_score
@@ -616,37 +685,36 @@ def rank_articles(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not articles:
         return []
 
-    # ── Step 1–4: Compute all sub-scores ──────────────────────────────
+    # ── Step 1–5: Compute all sub-scores ──────────────────────────────
     ml_scores = _compute_ml_scores(articles)
+    personal_boosts = _compute_personalization_boost(articles, user_interests)
     importance_boosts = _compute_importance_boost(articles)
     freshness_boosts = _compute_freshness_boost(articles)
     quality_scores = _compute_quality_score(articles)
 
-    # ── Step 5: Merge into final scores ───────────────────────────────
+    # ── Step 6: Merge into final scores ───────────────────────────────
     final_scores = _merge_scores(
-        ml_scores, importance_boosts, freshness_boosts, quality_scores
+        ml_scores, personal_boosts, importance_boosts, freshness_boosts, quality_scores
     )
 
-    # ── Step 6: Attach scores to articles ─────────────────────────────
-    for article, ml, imp, fresh, qual, final in zip(
+    # ── Step 7: Attach scores to articles ─────────────────────────────
+    for article, ml, pers, imp, fresh, qual, final in zip(
         articles,
         ml_scores,
+        personal_boosts,
         importance_boosts,
         freshness_boosts,
         quality_scores,
         final_scores,
     ):
         article["ml_score"] = round(ml, 4)
+        article["personalization_boost"] = round(pers, 4)
         article["importance_boost"] = round(imp, 4)
         article["freshness_boost"] = round(fresh, 4)
         article["quality_score"] = round(qual, 4)
         article["final_score"] = round(final, 4)
 
-    # ── Step 7: Sort by final_score descending ────────────────────────
+    # ── Step 8: Sort by final_score descending ────────────────────────
     ranked = sorted(articles, key=lambda a: a["final_score"], reverse=True)
 
     return ranked
-
-    # ─── Backward Compatibility ───────────────────────────────────────────
-
-rank_articles_by_interest = rank_articles

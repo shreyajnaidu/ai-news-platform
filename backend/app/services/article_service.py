@@ -47,13 +47,12 @@ transaction management. The route pattern looks like:
 If anything fails before commit, the session is rolled back automatically
 when it closes. No partial data ever gets saved.
 """
-from app.ml.ranking import calculate_article_score
 from typing import Any, Sequence
-from app.ml.personalization import personalize_score
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.article import Article
+from app.services.recommendation_service import rank_articles
 
 
 # ── Save ──────────────────────────────────────────────────────────────
@@ -202,43 +201,49 @@ def get_articles_by_category(
 def get_ranked_articles(
     db: Session,
     limit: int = 20,
+    user_interests: list[str] | None = None,
 ):
     """
-    Fetch articles and rank them using personalization logic.
+    Fetch articles and rank them using the unified recommendation engine.
+
+    Uses recommendation_service.rank_articles which computes:
+      - ML-based interest scores
+      - Editorial importance boosts
+      - Freshness time-decay
+      - Quality penalties
+      - Per-user personalization (if user_interests provided)
+
+    Args:
+        db:              SQLAlchemy session.
+        limit:           Max articles to fetch before ranking.
+        user_interests:  Optional list of interest topics for personalization.
+
+    Returns:
+        List of article dicts with score keys (ml_score, importance_boost,
+        freshness_boost, quality_score, final_score), sorted by final_score.
     """
 
     articles = get_articles(db, limit=limit)
 
-    ranked_articles = []
-
+    article_dicts = []
     for article in articles:
-        base_score = calculate_article_score(article)
-
-        score = personalize_score(
-            article,
-            base_score,
-        )
-
-        ranked_articles.append(
+        article_dicts.append(
             {
                 "id": article.id,
-                "title": article.title,
-                "description": article.description,
-                "category": article.category,
-                "source": article.source,
+                "title": article.title or "",
+                "description": article.description or "",
+                "content": article.content or "",
+                "category": article.category or "",
+                "source": article.source or "",
                 "url": article.url,
                 "image_url": article.image_url,
                 "published_at": article.published_at,
-                "score": score,
             }
         )
 
-    ranked_articles.sort(
-        key=lambda x: x["score"],
-        reverse=True,
-    )
+    ranked = rank_articles(article_dicts, user_interests=user_interests)
 
-    return ranked_articles
+    return ranked
 
 def get_article_by_url(
     db: Session,
