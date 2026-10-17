@@ -7,7 +7,7 @@
  * and manages the summary modal lifecycle.
  *
  * RESPONSIBILITIES:
- *   1. Call fetchFeed() on mount
+ *   1. Fetch on mount, every five minutes, and when the tab regains focus
  *   2. Show loading skeleton while waiting
  *   3. Show error state if the API fails
  *   4. Render articles in a responsive grid with stagger animation
@@ -16,13 +16,13 @@
  * Uses ONLY standard Tailwind classes + inline styles with hex/rgba.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { fetchFeed, ApiError, wakeBackend, WakeTimeoutError, type FeedArticle } from "@/services/api";
+import { fetchFeed, ApiError, wakeBackend, type FeedArticle } from "@/services/api";
 import { useSummary } from "@/hooks/useSummary";
 import { NewsCard } from "./NewsCard";
 import { SummaryModal } from "@/components/summary/SummaryModal";
-import { staggerGrid, blurIn, ease } from "@/lib/animations";
+import { staggerGrid, ease } from "@/lib/animations";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -42,6 +42,8 @@ const cardEntrance = {
     transition: { duration: 0.45, ease: ease.out },
   },
 };
+
+const FEED_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 // ─── Loading Skeleton ─────────────────────────────────────────────────
 
@@ -121,6 +123,7 @@ export function FeedSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(true);
+  const refreshInFlight = useRef(false);
 
   const {
     selectedArticle,
@@ -132,39 +135,70 @@ export function FeedSection() {
     closeSummary,
   } = useSummary();
 
-  async function loadFeed() {
-    setLoading(true);
-    setError(null);
+  async function loadFeed(showLoadingState = true) {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
 
-    try {
-      await wakeBackend();
-    } catch {
-      setConnecting(false);
-      setLoading(false);
-      setError(
-        "Server is starting up. Please wait a moment and refresh.",
-      );
-      return;
+    if (showLoadingState) {
+      setLoading(true);
+      setError(null);
     }
 
-    setConnecting(false);
-
-    fetchFeed()
-      .then((response) => {
-        setData(response);
-      })
-      .catch((err) => {
-        if (err instanceof ApiError) {
-          setError(err.detail);
-        } else {
-          setError("Something went wrong. Please try again.");
+    try {
+      try {
+        await wakeBackend();
+      } catch {
+        if (showLoadingState) {
+          setConnecting(false);
+          setError(
+            "Server is starting up. Please wait a moment and refresh.",
+          );
         }
-      })
-      .finally(() => setLoading(false));
+        return;
+      }
+
+      setConnecting(false);
+
+      try {
+        const response = await fetchFeed();
+        setData(response);
+        setError(null);
+      } catch (err) {
+        if (showLoadingState) {
+          if (err instanceof ApiError) {
+            setError(err.detail);
+          } else {
+            setError("Something went wrong. Please try again.");
+          }
+        }
+      }
+    } finally {
+      if (showLoadingState) setLoading(false);
+      refreshInFlight.current = false;
+    }
   }
 
+  const refreshFeed = useEffectEvent((showLoadingState: boolean) => {
+    void loadFeed(showLoadingState);
+  });
+
   useEffect(() => {
-    loadFeed();
+    const initialRefreshId = window.setTimeout(() => refreshFeed(true), 0);
+
+    const intervalId = window.setInterval(
+      () => refreshFeed(false),
+      FEED_REFRESH_INTERVAL_MS,
+    );
+    const refreshVisibleFeed = () => {
+      if (document.visibilityState === "visible") refreshFeed(false);
+    };
+
+    document.addEventListener("visibilitychange", refreshVisibleFeed);
+    return () => {
+      window.clearTimeout(initialRefreshId);
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshVisibleFeed);
+    };
   }, []);
 
   return (
@@ -212,7 +246,7 @@ export function FeedSection() {
           </div>
         </section>
       ) : error ? (
-        <ErrorState message={error} onRetry={loadFeed} />
+        <ErrorState message={error} onRetry={() => void loadFeed()} />
       ) : loading ? (
         <SkeletonGrid />
       ) : data && data.feed.length > 0 ? (

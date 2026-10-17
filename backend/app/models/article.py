@@ -110,6 +110,10 @@ class Article(BaseModel):
     # Speed up the queries your app will actually run.
 
     __table_args__ = (
+        # Retention and hard-cap cleanup both order/filter by ingestion time.
+        Index("ix_articles_created_at", "created_at"),
+        # Main feed query orders globally by publication time.
+        Index("ix_articles_published_at", "published_at"),
         # Most common query: "latest articles in category X"
         Index("ix_articles_category_published", "category", "published_at"),
         # Recommendation query: "top articles by popularity, recent first"

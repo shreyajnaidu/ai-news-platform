@@ -198,5 +198,5 @@ export interface FeedResponse {
 // ─── Feed API ────────────────────────────────────────────────────────
 
 export async function fetchFeed(): Promise<FeedResponse> {
-  return api.get<FeedResponse>("/feed");
+  return api.get<FeedResponse>("/feed", { cache: "no-store" });
 }

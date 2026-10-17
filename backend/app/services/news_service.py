@@ -21,7 +21,7 @@ DATA FLOW:
       ▼
   fetch_articles(query, page_size)
       │
-      ├─► _build_url()          ← assembles the full API URL
+      ├─► _build_params()       ← assembles safe request parameters
       │
       ├─► requests.get()        ← calls NewsAPI
       │
@@ -38,24 +38,13 @@ Every function here is plain synchronous Python — no async, no generators,
 no decorators. Just functions that take inputs and return outputs.
 """
 
-import os
 from datetime import datetime
 from typing import Any
-from app.ml.classifier import classify_article
+
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
-# ── Configuration ─────────────────────────────────────────────────────
-# Read from .env or shell environment.
-# Never hardcode API keys — they belong in .env (which is gitignored).
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
-
-if not NEWSAPI_KEY:
-    raise RuntimeError(
-        "NEWSAPI_KEY is not set. "
-        "Add it to your .env file: NEWSAPI_KEY=your_key_here"
-    )
+from app.core.ingestion_config import ingestion_settings
+from app.ml.classifier import classify_article
 
 NEWSAPI_BASE_URL = "https://newsapi.org/v2/everything"
 
@@ -99,12 +88,13 @@ def fetch_articles(
     Raises:
         NewsAPIError: If the API call fails for any reason.
     """
-    url = _build_url(query, page_size, language, sort_by)
+    params = _build_params(query, page_size, language, sort_by)
 
     try:
-        response = requests.get(url, timeout=10)
-    except requests.RequestException as exc:
-        raise NewsAPIError(f"Network error calling NewsAPI: {exc}") from exc
+        response = requests.get(NEWSAPI_BASE_URL, params=params, timeout=10)
+    except requests.RequestException:
+        # Request exceptions may contain the prepared URL and its API key.
+        raise NewsAPIError("Network error calling NewsAPI") from None
 
     raw_data = _handle_response(response)
     raw_articles = raw_data.get("articles", [])
@@ -114,26 +104,28 @@ def fetch_articles(
 
 # ── Private helpers ───────────────────────────────────────────────────
 
-def _build_url(
+def _build_params(
     query: str,
     page_size: int,
     language: str,
     sort_by: str,
-) -> str:
+) -> dict[str, Any]:
     """
     Assemble the full NewsAPI URL with query parameters.
 
     The URL looks like:
         https://newsapi.org/v2/everything?q=AI&pageSize=20&language=en&sortBy=publishedAt&apiKey=xxx
     """
-    params = (
-        f"?q={query}"
-        f"&pageSize={page_size}"
-        f"&language={language}"
-        f"&sortBy={sort_by}"
-        f"&apiKey={NEWSAPI_KEY}"
-    )
-    return NEWSAPI_BASE_URL + params
+    if not ingestion_settings.newsapi_key:
+        raise NewsAPIError("NEWSAPI_KEY is not configured")
+
+    return {
+        "q": query,
+        "pageSize": page_size,
+        "language": language,
+        "sortBy": sort_by,
+        "apiKey": ingestion_settings.newsapi_key,
+    }
 
 
 def _handle_response(response: requests.Response) -> dict[str, Any]:
@@ -212,7 +204,7 @@ def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
         content = re.sub(r"\s*\[\+\d+\s*chars\]$", "", content).strip() or None
 
     return {
-        "title": raw.get("title"),
+        "title": raw.get("title") or "",
         "description": raw.get("description"),
         "content": content,
         "source": source_name,
@@ -221,8 +213,8 @@ def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
         "author": author,
         "published_at": published_at,
         "language": raw.get("language"),
-"category": classify_article(
-    raw.get("title", ""),
-    raw.get("description"),
-),  # not always returned by /everything
+        "category": classify_article(
+            raw.get("title") or "",
+            raw.get("description"),
+        ),  # not always returned by /everything
     }

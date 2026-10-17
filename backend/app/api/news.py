@@ -1,19 +1,15 @@
 from typing import Optional
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.security import get_optional_current_user
 from app.db.database import get_db
 from app.models.user import User
 from app.services.article_service import (
+    get_articles,
     get_ranked_articles,
-    save_articles,
-)
-from app.services.news_service import (
-    NewsAPIError,
-    fetch_articles,
 )
 
 router = APIRouter()
@@ -21,43 +17,24 @@ router = APIRouter()
 
 @router.get("/news")
 def get_news(
-    query: str = "technology",
+    response: Response,
     db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=100),
 ):
-    try:
-        articles = fetch_articles(query=query)
-
-        saved_articles = save_articles(db, articles)
-
-        db.commit()
-
-        return {
-            "message": "Articles fetched and stored successfully",
-            "saved_count": len(saved_articles),
-            "articles": articles,
-        }
-
-    except NewsAPIError as e:
-        raise HTTPException(
-            status_code=502,
-            detail=str(e),
-        )
-
-    except Exception as e:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
-        )
+    """Return cached articles without calling NewsAPI or writing to the DB."""
+    response.headers["Cache-Control"] = "no-store"
+    articles = get_articles(db, limit=limit)
+    return {"count": len(articles), "articles": articles}
 
 
 @router.get("/feed")
 def get_feed(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     try:
+        response.headers["Cache-Control"] = "no-store"
         user_interests = None
         if current_user and current_user.interests:
             try:

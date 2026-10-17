@@ -20,6 +20,8 @@
  *   - Exit reverses the enter animation
  */
 
+import Image from "next/image";
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { FeedArticle } from "@/services/api";
 import type { SummaryResult } from "@/services/summarizer";
@@ -61,12 +63,15 @@ export function SummaryModal({
   error,
   onClose,
 }: SummaryModalProps) {
-  // Prevent body scroll when modal is open
-  if (typeof document !== "undefined" && isOpen) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-  } else if (typeof document !== "undefined") {
-    document.body.style.overflow = "";
-  }
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
 
   return (
     <AnimatePresence>
@@ -140,17 +145,19 @@ export function SummaryModal({
                 {/* Article image */}
                 {article.image_url && (
                   <div
-                    className="mb-5 overflow-hidden rounded-xl"
+                    className="relative mb-5 overflow-hidden rounded-xl"
                     style={{
                       aspectRatio: "16/9",
                       backgroundColor: "#111114",
                     }}
                   >
-                    <img
+                    <Image
                       src={article.image_url}
                       alt=""
+                      fill
+                      sizes="(max-width: 640px) 100vw, 512px"
+                      unoptimized
                       className="h-full w-full object-cover"
-                      loading="lazy"
                     />
                   </div>
                 )}

@@ -18,6 +18,7 @@
  */
 
 import { useRef, type MouseEvent } from "react";
+import Image from "next/image";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import type { FeedArticle } from "@/services/api";
 import { tiltTransition } from "@/lib/animations";
@@ -145,11 +146,13 @@ export function NewsCard({ article, onArticleClick }: NewsCardProps) {
           style={{ backgroundColor: "#111114" }}
         >
           {article.image_url ? (
-            <img
+            <Image
               src={article.image_url}
               alt=""
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              unoptimized
               className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-              loading="lazy"
             />
           ) : (
             <div

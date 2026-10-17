@@ -1,0 +1,21 @@
+services:
+  - type: cron
+    name: ai-news-ingestion
+    runtime: python
+    rootDir: backend
+    schedule: "0 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m alembic upgrade head && python -m app.jobs.ingest_news
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: NEWSAPI_KEY
+        sync: false
+      - key: INGESTION_QUERIES
+        value: technology,artificial intelligence
+      - key: NEWS_PAGE_SIZE
+        value: 20
+      - key: ARTICLE_RETENTION_DAYS
+        value: 30
+      - key: ARTICLE_MAX_ROWS
+        value: 10000

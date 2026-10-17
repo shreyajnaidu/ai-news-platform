@@ -11,6 +11,7 @@
  */
 
 import axios, { type AxiosError, type AxiosInstance } from "axios";
+import type { FeedArticle } from "@/services/api";
 
 // ─── Configuration ────────────────────────────────────────────────────
 
@@ -65,17 +66,17 @@ export class SummaryApiError extends Error {
  * @throws SummaryApiError on network failure, 404, 500, etc.
  */
 export async function summarizeArticle(
-  article: any,
+  article: FeedArticle,
 ): Promise<SummaryResult> {
   try {
     const response = await api.post<SummaryResult>(
-  "articles/summarize",
-  {
-    title: article.title,
-    content: article.description || article.title || article.title,
-    source: article.source,
-  }
-);
+      "/articles/summarize",
+      {
+        title: article.title,
+        content: article.description || article.title,
+        source: article.source,
+      },
+    );
 
     return response.data;
   } catch (error) {
@@ -90,14 +91,13 @@ export async function summarizeArticle(
 
       const detail =
         status === 500
-    ? "AI summary service is temporarily busy. Please try again shortly."
-    : serverMessage ??
-      (status
-        ? `Server error (${status})`
-        : `Network error: ${networkMessage}`);
+          ? "AI summary service is temporarily busy. Please try again shortly."
+          : serverMessage ??
+            (status
+              ? `Server error (${status})`
+              : `Network error: ${networkMessage}`);
 
       throw new SummaryApiError(status, detail);
-      
     }
 
     throw new SummaryApiError(

@@ -12,47 +12,42 @@ called "dependency injection" and it means:
   2. The same session is reused within a single request (transaction)
   3. Tests can pass in a fake session without touching real PostgreSQL
 
-HOW SESSIONS FLOW THROUGH YOUR APP:
-------------------------------------
-  FastAPI request
-      │
-      ▼
-  Depends(get_db)  →  creates session, yields it
-      │
-      ▼
-  Route handler  →  calls article_service.save_articles(db, data)
-      │
-      ▼
-  Service function  →  uses db to query/insert, returns result
-      │
-      ▼
-  Route handler  →  returns response to client
-      │
-      ▼
-  Finally block  →  session.close() returns connection to pool
+INGESTION FLOW:
+---------------
+The standalone ingestion job owns the session and transaction. This service
+uses PostgreSQL ON CONFLICT for atomic URL deduplication, then applies the age
+retention and hard row cap before the job commits everything together.
 
 WHY NO db.commit() INSIDE THE SERVICE?
 ---------------------------------------
-The route handler owns the session lifecycle. It decides when to commit.
+The caller owns the session lifecycle. It decides when to commit.
 This keeps the service "pure" — it only does database operations, not
-transaction management. The route pattern looks like:
+transaction management. The worker pattern looks like:
 
-    @router.post("/ingest")
-    def ingest_articles(db: Session = Depends(get_db)):
-        articles = news_service.fetch_articles("AI")
-        saved = article_service.save_articles(db, articles)
-        db.commit()          # ← route decides when to commit
-        return {"saved": len(saved)}
+    db = SessionLocal()
+    saved = article_service.save_articles(db, articles)
+    db.commit()
 
-If anything fails before commit, the session is rolled back automatically
-when it closes. No partial data ever gets saved.
+If anything fails before commit, the worker rolls back the transaction. No
+partial data gets saved.
 """
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, Sequence
-from sqlalchemy import select
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.article import Article
 from app.services.recommendation_service import rank_articles
+
+
+@dataclass(frozen=True)
+class CleanupResult:
+    deleted_old: int
+    deleted_over_cap: int
+    remaining: int
 
 
 # ── Save ──────────────────────────────────────────────────────────────
@@ -62,24 +57,10 @@ def save_articles(
     articles_data: list[dict[str, Any]],
 ) -> list[Article]:
     """
-    Save a batch of articles, skipping any whose URL already exists.
+    Bulk-insert valid articles and atomically skip URLs already in PostgreSQL.
 
-    This is the main ingestion entry point. You pass it a list of
-    normalized article dicts (from news_service._normalize) and it:
-
-      1. Collects all URLs from the batch
-      2. Queries the DB to find which URLs already exist
-      3. Filters out duplicates (by URL)
-      4. Inserts only new articles
-      5. Returns the newly created Article objects
-
-    WHY BULK DEDUPLICATE?
-    ─────────────────────
-    Naive approach: loop through articles, check one-by-one if URL exists.
-    That's N+1 queries — terrible performance for 100 articles.
-
-    This approach: 1 query to find all existing URLs, then filter in Python.
-    Two database operations total (1 SELECT + 1 INSERT), regardless of batch size.
+    Duplicates within the incoming batch are removed in Python. Database-level
+    ON CONFLICT handles existing URLs and concurrent insert attempts safely.
 
     Args:
         db:           SQLAlchemy session (from Depends(get_db))
@@ -91,55 +72,79 @@ def save_articles(
     if not articles_data:
         return []
 
-    # ── Step 1: Collect all URLs from the incoming batch ───────────────
-    incoming_urls = [a["url"] for a in articles_data if a.get("url")]
-
-    # ── Step 2: Find which URLs already exist in the database ──────────
-    # This is ONE query, no matter how many URLs we're checking.
-    existing_urls: set[str] = set()
-    if incoming_urls:
-        stmt = select(Article.url).where(Article.url.in_(incoming_urls))
-        result = db.execute(stmt)
-        existing_urls = {row[0] for row in result}
-
-    # ── Step 3: Filter out duplicates and create Article objects ────────
-    new_articles: list[Article] = []
-    seen_urls: set[str] = set()  # catch duplicates within the same batch
+    rows: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
 
     for data in articles_data:
         url = data.get("url")
-        if not url or url in existing_urls or url in seen_urls:
+        title = data.get("title")
+        if not url or not title or url in seen_urls:
             continue
 
         seen_urls.add(url)
-
-        # Only pass fields the Article model actually has.
-        # Extra keys in the dict (like "language" from NewsAPI when null)
-        # are safely ignored — they just become NULL columns.
-        article = Article(
-            title=data.get("title"),
-            description=data.get("description"),
-            content=data.get("content"),
-            source=data.get("source"),
-            url=url,
-            image_url=data.get("image_url"),
-            author=data.get("author"),
-            published_at=data.get("published_at"),
-            category=data.get("category"),
-            language=data.get("language"),
-            popularity_score=data.get("popularity_score"),
-            sentiment_score=data.get("sentiment_score"),
+        rows.append(
+            {
+                "title": title,
+                "description": data.get("description"),
+                "content": data.get("content"),
+                "source": data.get("source"),
+                "url": url,
+                "image_url": data.get("image_url"),
+                "author": data.get("author"),
+                "published_at": data.get("published_at"),
+                "category": data.get("category"),
+                "language": data.get("language"),
+                "popularity_score": data.get("popularity_score"),
+                "sentiment_score": data.get("sentiment_score"),
+            }
         )
-        new_articles.append(article)
 
-    # ── Step 4: Bulk insert all new articles at once ───────────────────
-    # add_all + flush sends a single INSERT … RETURNING to PostgreSQL.
-    # The objects get their id, created_at, updated_at populated by the DB.
-    if new_articles:
-        db.add_all(new_articles)
-        db.flush()  # sends SQL to DB but does NOT commit
+    if not rows:
+        return []
 
-    return new_articles
+    stmt = (
+        insert(Article)
+        .values(rows)
+        .on_conflict_do_nothing(index_elements=[Article.url])
+        .returning(Article)
+    )
+    return list(db.scalars(stmt).all())
+
+
+def clean_articles(
+    db: Session,
+    retention_days: int,
+    max_rows: int,
+    *,
+    now: datetime | None = None,
+) -> CleanupResult:
+    """Delete expired articles, then enforce an absolute table-size cap."""
+    if retention_days < 1:
+        raise ValueError("retention_days must be at least 1")
+    if max_rows < 1:
+        raise ValueError("max_rows must be at least 1")
+
+    cutoff = (now or datetime.utcnow()) - timedelta(days=retention_days)
+    old_result = db.execute(
+        delete(Article).where(Article.created_at < cutoff)
+    )
+
+    # Keep the newest rows. id is a deterministic tie-breaker for equal timestamps.
+    excess_ids = (
+        select(Article.id)
+        .order_by(Article.created_at.desc(), Article.id.desc())
+        .offset(max_rows)
+    )
+    cap_result = db.execute(
+        delete(Article).where(Article.id.in_(excess_ids))
+    )
+    remaining = db.scalar(select(func.count()).select_from(Article)) or 0
+
+    return CleanupResult(
+        deleted_old=old_result.rowcount or 0,
+        deleted_over_cap=cap_result.rowcount or 0,
+        remaining=remaining,
+    )
 
 
 # ── Fetch ─────────────────────────────────────────────────────────────
