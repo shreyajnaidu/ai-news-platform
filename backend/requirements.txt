@@ -4,6 +4,7 @@ uvicorn[standard]
 sqlalchemy
 alembic
 psycopg2-binary
+psycopg[binary]
 
 python-dotenv
 
@@ -16,7 +17,7 @@ requests
 
 openai
 
-scikit-learn
+scikit-learn==1.8.0
 numpy
 pandas
 
